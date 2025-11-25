@@ -103,26 +103,24 @@ builder.Services.AddSignalR(options =>
     options.MaximumReceiveMessageSize = 102400; // 100 KB
 });
 
-// CORS
+// CORS (permisos o controles que aseguran que solo ciertas ubicaciones puedan entrar al hub, osea la conexion, eso te limita en caso de seguridad. como nosotros usarmemos en varios, para que todos esten permitidos.
 builder.Services.AddCors(options =>
 {
+    // Política general para la API REST
     options.AddPolicy("AllowAll", policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
-    
+
+    // Política del Hub SignalR - permite TODOS los orígenes (desarrollo)
     options.AddPolicy("SignalRPolicy", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:3000", 
-                "http://localhost:5173",
-                "http://localhost:8080",
-                "http://localhost:4200"
-            )
-            .AllowAnyMethod()
+        policy
+            .SetIsOriginAllowed(_ => true)  // permite cualquier origen
             .AllowAnyHeader()
+            .AllowAnyMethod()
             .AllowCredentials();
     });
 });
