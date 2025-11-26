@@ -36,6 +36,9 @@ namespace Proyecto1.Services
             _logger = logger;
         }
 
+        // ==========================================================
+        // CREATE GAME
+        // ==========================================================
         public async Task<Game> CreateGameAsync(int roomId)
         {
             var room = await _roomRepository.GetByIdWithPlayersAsync(roomId);
@@ -78,6 +81,9 @@ namespace Proyecto1.Services
             return game;
         }
 
+        // ==========================================================
+        // GET GAME STATE
+        // ==========================================================
         public async Task<GameStateDto> GetGameStateAsync(int gameId)
         {
             var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
@@ -90,11 +96,14 @@ namespace Proyecto1.Services
             {
                 GameId = game.Id,
                 Status = game.Status.ToString(),
+
                 CurrentTurnPlayerIndex = game.CurrentTurnPlayerIndex,
                 CurrentTurnPhase = game.CurrentTurnPhase.ToString(),
+
                 CurrentPlayerId = currentPlayer?.Id,
                 CurrentPlayerName = currentPlayer?.User.Username,
-                Players = game.Players.Select(p => new PlayerStateDto
+
+                Players = game.Players.Select(p => new PlayerGameDto
                 {
                     PlayerId = p.Id,
                     UserId = p.UserId,
@@ -104,6 +113,7 @@ namespace Proyecto1.Services
                     Status = p.Status.ToString(),
                     IsCurrentTurn = p.Id == currentPlayer?.Id
                 }).ToList(),
+
                 Board = new BoardStateDto
                 {
                     Size = game.Board.Size,
@@ -118,11 +128,15 @@ namespace Proyecto1.Services
                         TopPosition = l.TopPosition
                     }).ToList()
                 },
+
                 WinnerPlayerId = game.WinnerPlayerId,
                 WinnerName = game.Players.FirstOrDefault(p => p.Id == game.WinnerPlayerId)?.User.Username
             };
         }
 
+        // ==========================================================
+        // ROLL DICE AND MOVE
+        // ==========================================================
         public async Task<MoveResultDto> RollDiceAndMoveAsync(int gameId, int userId)
         {
             var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
@@ -142,8 +156,7 @@ namespace Proyecto1.Services
             {
                 DiceValue = diceValue,
                 FromPosition = fromPosition,
-                ToPosition = toPosition,
-                IsWinner = false
+                ToPosition = toPosition
             };
 
             if (fromPosition + diceValue > game.Board.Size)
@@ -151,6 +164,7 @@ namespace Proyecto1.Services
                 result.ToPosition = fromPosition;
                 result.FinalPosition = fromPosition;
                 result.Message = "Roll exceeds board size, stay in place";
+
                 _turnService.AdvanceTurn(game);
                 await _gameRepository.UpdateAsync(game);
                 return result;
@@ -158,12 +172,11 @@ namespace Proyecto1.Services
 
             player.Position = toPosition;
 
+            var boardService = _boardService as BoardService;
             var snakeDest = _boardService.GetSnakeDestination(game.Board, toPosition);
             var ladderDest = _boardService.GetLadderDestination(game.Board, toPosition);
 
-            var boardService = _boardService as BoardService;
-
-            // PROFESORES (serpientes)
+            // PROFESOR
             if (snakeDest.HasValue && boardService != null)
             {
                 var profesorQuestion = boardService.GetProfesorQuestion(toPosition);
@@ -172,9 +185,10 @@ namespace Proyecto1.Services
                 {
                     result.RequiresProfesorAnswer = true;
                     result.ProfesorQuestion = profesorQuestion;
-                    result.FinalPosition = toPosition; // espera la respuesta
+                    result.FinalPosition = toPosition;
                     result.SpecialEvent = "Profesor";
                     result.Message = $"¡Has caído con el profesor {profesorQuestion.Profesor}!";
+
                     await _playerRepository.UpdateAsync(player);
                     await _gameRepository.UpdateAsync(game);
                     return result;
@@ -204,6 +218,7 @@ namespace Proyecto1.Services
                 game.Status = GameStatus.Finished;
                 game.WinnerPlayerId = player.Id;
                 game.FinishedAt = DateTime.UtcNow;
+
                 result.IsWinner = true;
                 result.Message = "🎉 You won!";
             }
@@ -218,6 +233,9 @@ namespace Proyecto1.Services
             return result;
         }
 
+        // ==========================================================
+        // ANSWER PROFESOR QUESTION
+        // ==========================================================
         public async Task<ProfesorQuestionDto?> GetProfesorQuestionAsync(int gameId, int userId)
         {
             var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId);
@@ -232,22 +250,20 @@ namespace Proyecto1.Services
             var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId);
             if (player == null) throw new InvalidOperationException("Player not in game");
 
-            var boardService = _boardService as BoardService;
-            if (boardService == null) throw new InvalidOperationException("Board service not available");
+            var boardService = _boardService as BoardService
+                ?? throw new InvalidOperationException("Board service unavailable");
 
-            // Cargamos el juego completo para evitar NullReference
-            var game = await _gameRepository.GetByIdWithDetailsAsync(player.GameId.Value);
-            if (game == null) throw new InvalidOperationException("Game not found");
+            var game = await _gameRepository.GetByIdWithDetailsAsync(player.GameId.Value)
+                ?? throw new InvalidOperationException("Game not found");
 
             var result = new MoveResultDto
             {
                 FromPosition = player.Position,
                 ToPosition = player.Position,
-                FinalPosition = player.Position,
-                IsWinner = false
+                FinalPosition = player.Position
             };
 
-            var isCorrect = boardService.ValidateProfesorAnswer(player.Position, answer);
+            bool isCorrect = boardService.ValidateProfesorAnswer(player.Position, answer);
 
             if (isCorrect)
             {
@@ -271,6 +287,9 @@ namespace Proyecto1.Services
             return result;
         }
 
+        // ==========================================================
+        // SURRENDER
+        // ==========================================================
         public async Task SurrenderAsync(int gameId, int userId)
         {
             var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
@@ -283,13 +302,16 @@ namespace Proyecto1.Services
             await _playerRepository.UpdateAsync(player);
 
             var activePlayers = game.Players.Where(p => p.Status == PlayerStatus.Playing).ToList();
+
             if (activePlayers.Count == 1)
             {
                 var winner = activePlayers.First();
                 winner.Status = PlayerStatus.Winner;
+
                 game.Status = GameStatus.Finished;
                 game.WinnerPlayerId = winner.Id;
                 game.FinishedAt = DateTime.UtcNow;
+
                 await _playerRepository.UpdateAsync(winner);
             }
 
@@ -297,4 +319,3 @@ namespace Proyecto1.Services
         }
     }
 }
-

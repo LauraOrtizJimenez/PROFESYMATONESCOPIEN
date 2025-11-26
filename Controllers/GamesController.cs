@@ -24,7 +24,7 @@ namespace Proyecto1.Controllers
             {
                 var game = await _gameService.CreateGameAsync(request.RoomId);
                 var gameState = await _gameService.GetGameStateAsync(game.Id);
-                
+
                 return Ok(gameState);
             }
             catch (Exception ex)

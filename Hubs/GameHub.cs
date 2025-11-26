@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using System.Security.Claims;
 using Proyecto1.Services.Interfaces;
+using System.Security.Claims;
 
 namespace Proyecto1.Hubs
 {
@@ -17,152 +17,158 @@ namespace Proyecto1.Hubs
             _logger = logger;
         }
 
+        private string GetUserId()
+        {
+            return Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? throw new HubException("User not authenticated");
+        }
+
         public override async Task OnConnectedAsync()
         {
-            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            _logger.LogInformation($"User {userId} connected to GameHub");
+            var uid = GetUserId();
+            _logger.LogInformation($"[SignalR] User {uid} connected");
             await base.OnConnectedAsync();
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            _logger.LogInformation($"User {userId} disconnected from GameHub");
+            var uid = GetUserId();
+            _logger.LogInformation($"[SignalR] User {uid} disconnected");
             await base.OnDisconnectedAsync(exception);
         }
 
+        // ================================================
+        // JOIN GROUP
+        // ================================================
         public async Task JoinGameGroup(int gameId)
         {
-            var userId = GetUserId();
-            var groupName = $"Game_{gameId}";
+            var uid = GetUserId();
+            var group = $"Game_{gameId}";
 
-            await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
-            _logger.LogInformation($"User {userId} joined game group {groupName}");
+            await Groups.AddToGroupAsync(Context.ConnectionId, group);
+            await Clients.OthersInGroup(group).SendAsync("PlayerJoined", uid);
 
-            // Notificar a otros jugadores
-            await Clients.OthersInGroup(groupName).SendAsync("PlayerJoined", userId);
-
-            // Enviar estado actual del juego al jugador que se conecta
             try
             {
-                var gameState = await _gameService.GetGameStateAsync(gameId);
-                await Clients.Caller.SendAsync("GameStateUpdate", gameState);
+                var state = await _gameService.GetGameStateAsync(gameId);
+                await Clients.Caller.SendAsync("GameStateUpdate", state);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error sending game state to user {userId}");
+                _logger.LogError(ex, "Error sending game state");
                 await Clients.Caller.SendAsync("Error", ex.Message);
             }
         }
 
+        // ================================================
+        // LEAVE GROUP
+        // ================================================
         public async Task LeaveGameGroup(int gameId)
         {
-            var userId = GetUserId();
-            var groupName = $"Game_{gameId}";
+            var uid = GetUserId();
+            var group = $"Game_{gameId}";
 
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
-            _logger.LogInformation($"User {userId} left game group {groupName}");
-
-            await Clients.OthersInGroup(groupName).SendAsync("PlayerLeft", userId);
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);
+            await Clients.OthersInGroup(group).SendAsync("PlayerLeft", uid);
         }
 
+        // ================================================
+        // ROLL DICE
+        // ================================================
         public async Task SendMove(int gameId)
         {
-            var userId = GetUserId();
-            var groupName = $"Game_{gameId}";
+            var uid = GetUserId();
+            var group = $"Game_{gameId}";
 
             try
             {
-                var moveResult = await _gameService.RollDiceAndMoveAsync(gameId, int.Parse(userId));
+                var move = await _gameService.RollDiceAndMoveAsync(gameId, int.Parse(uid));
 
-                // Si requiere responder al profesor, enviar solo al jugador
-                if (moveResult.RequiresProfesorAnswer && moveResult.ProfesorQuestion != null)
+                // Pregunta de profesor SOLO al jugador
+                if (move.RequiresProfesorAnswer && move.ProfesorQuestion != null)
                 {
-                    await Clients.Caller.SendAsync("ReceiveProfesorQuestion", moveResult.ProfesorQuestion);
+                    await Clients.Caller.SendAsync("ReceiveProfesorQuestion", move.ProfesorQuestion);
                 }
 
-                // Enviar resultado del movimiento a todos en el grupo
-                await Clients.Group(groupName).SendAsync("MoveCompleted", new
+                // Resultado del movimiento
+                await Clients.Group(group).SendAsync("MoveCompleted", new
                 {
-                    UserId = userId,
-                    MoveResult = moveResult
+                    UserId = uid,
+                    MoveResult = move
                 });
 
-                // Enviar estado actualizado del juego
-                var gameState = await _gameService.GetGameStateAsync(gameId);
-                await Clients.Group(groupName).SendAsync("GameStateUpdate", gameState);
+                // Estado actualizado
+                var state = await _gameService.GetGameStateAsync(gameId);
+                await Clients.Group(group).SendAsync("GameStateUpdate", state);
 
-                // Si hay ganador, notificar
-                if (moveResult.IsWinner)
+                // Ganador
+                if (move.IsWinner)
                 {
-                    await Clients.Group(groupName).SendAsync("GameFinished", new
+                    await Clients.Group(group).SendAsync("GameFinished", new
                     {
-                        WinnerId = userId,
-                        Message = moveResult.Message
+                        WinnerId = uid,
+                        WinnerName = state.WinnerName,
+                        Message = move.Message
                     });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error processing move for user {userId} in game {gameId}");
+                _logger.LogError(ex, "Roll error");
                 await Clients.Caller.SendAsync("MoveError", ex.Message);
             }
         }
 
+        // ================================================
+        // SURRENDER
+        // ================================================
         public async Task SendSurrender(int gameId)
         {
-            var userId = GetUserId();
-            var groupName = $"Game_{gameId}";
+            var uid = GetUserId();
+            var group = $"Game_{gameId}";
 
             try
             {
-                await _gameService.SurrenderAsync(gameId, int.Parse(userId));
+                await _gameService.SurrenderAsync(gameId, int.Parse(uid));
 
-                // Notificar rendición
-                await Clients.Group(groupName).SendAsync("PlayerSurrendered", userId);
+                await Clients.Group(group).SendAsync("PlayerSurrendered", uid);
 
-                // Enviar estado actualizado del juego
-                var gameState = await _gameService.GetGameStateAsync(gameId);
-                await Clients.Group(groupName).SendAsync("GameStateUpdate", gameState);
+                var state = await _gameService.GetGameStateAsync(gameId);
+                await Clients.Group(group).SendAsync("GameStateUpdate", state);
 
-                // Verificar si el juego terminó
-                if (gameState.Status == "Finished")
+                if (state.Status == "Finished")
                 {
-                    await Clients.Group(groupName).SendAsync("GameFinished", new
+                    await Clients.Group(group).SendAsync("GameFinished", new
                     {
-                        WinnerId = gameState.WinnerPlayerId,
-                        WinnerName = gameState.WinnerName,
+                        WinnerId = state.WinnerPlayerId,
+                        WinnerName = state.WinnerName,
                         Reason = "Other players surrendered"
                     });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error processing surrender for user {userId} in game {gameId}");
+                _logger.LogError(ex, "Surrender error");
                 await Clients.Caller.SendAsync("SurrenderError", ex.Message);
             }
         }
 
+        // ================================================
+        // REQUEST GAME STATE
+        // ================================================
         public async Task RequestGameState(int gameId)
         {
             try
             {
-                var gameState = await _gameService.GetGameStateAsync(gameId);
-                await Clients.Caller.SendAsync("GameStateUpdate", gameState);
+                var state = await _gameService.GetGameStateAsync(gameId);
+                await Clients.Caller.SendAsync("GameStateUpdate", state);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting game state for game {gameId}");
+                _logger.LogError(ex, "Error loading game state");
                 await Clients.Caller.SendAsync("Error", ex.Message);
             }
         }
-
-        private string GetUserId()
-        {
-            return Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? throw new HubException("User not authenticated");
-        }
     }
 }
-
  
