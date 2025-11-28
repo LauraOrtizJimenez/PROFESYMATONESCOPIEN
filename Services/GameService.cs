@@ -59,7 +59,8 @@ namespace Proyecto1.Services
                 PlayerNames = room.Players
                     .OrderBy(p => p.JoinedAt)
                     .Select(p => p.User.Username)
-                    .ToList()
+                    .ToList(),
+                GameId = room.Game?.Id  
             };
         }
 

@@ -49,7 +49,8 @@ namespace Proyecto1.Controllers
                     MaxPlayers = roomDetail.MaxPlayers,
                     Status = roomDetail.Status.ToString(),
                     CreatedAt = roomDetail.CreatedAt,
-                    PlayerNames = roomDetail.Players.Select(p => p.User.Username).ToList()
+                    PlayerNames = roomDetail.Players.Select(p => p.User.Username).ToList(),
+                    GameId = roomDetail.Game?.Id  
                 });
             }
             catch (Exception ex)
@@ -81,7 +82,8 @@ namespace Proyecto1.Controllers
                         MaxPlayers = room.MaxPlayers,
                         Status = room.Status.ToString(),
                         CreatedAt = room.CreatedAt,
-                        PlayerNames = room.Players.Select(p => p.User.Username).ToList()
+                        PlayerNames = room.Players.Select(p => p.User.Username).ToList(),
+                        GameId = room.Game?.Id 
                     }
                 });
             }
@@ -107,7 +109,8 @@ namespace Proyecto1.Controllers
                     MaxPlayers = r.MaxPlayers,
                     Status = r.Status.ToString(),
                     CreatedAt = r.CreatedAt,
-                    PlayerNames = r.Players.Select(p => p.User.Username).ToList()
+                    PlayerNames = r.Players.Select(p => p.User.Username).ToList(),
+                    GameId = r.Game?.Id  
                 }).ToList();
 
                 return Ok(roomDtos);
@@ -137,7 +140,8 @@ namespace Proyecto1.Controllers
                     MaxPlayers = room.MaxPlayers,
                     Status = room.Status.ToString(),
                     CreatedAt = room.CreatedAt,
-                    PlayerNames = room.Players.Select(p => p.User.Username).ToList()
+                    PlayerNames = room.Players.Select(p => p.User.Username).ToList(),
+                    GameId = room.Game?.Id  
                 });
             }
             catch (Exception ex)
