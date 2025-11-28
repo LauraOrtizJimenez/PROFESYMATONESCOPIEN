@@ -1,9 +1,11 @@
-using Proyecto1.Models;
-using Proyecto1.Models.Enums;
-using Proyecto1.Infrastructure.Repositories.Interfaces;
+using System;
 using Proyecto1.DTOs.Games;
+using Proyecto1.DTOs.Lobby;
 using Proyecto1.DTOs.Moves;
 using Proyecto1.Infrastructure.Repositories;
+using Proyecto1.Infrastructure.Repositories.Interfaces;
+using Proyecto1.Models;
+using Proyecto1.Models.Enums;
 using Proyecto1.Services.Interfaces;
 
 namespace Proyecto1.Services
@@ -35,29 +37,47 @@ namespace Proyecto1.Services
             _turnService = turnService;
             _logger = logger;
         }
-        
-        public async Task<GameStateDto?> GetGameByRoomAsync(int roomId)
+
+
+        // ==========================================================
+        // 🔥 LOBBY SUMMARY (USADO POR SIGNALR)
+        // ==========================================================
+        public async Task<RoomSummaryDto> GetRoomSummaryAsync(int roomId)
         {
-            var game = await _gameRepository.GetByRoomIdAsync(roomId);
-            if (game == null)
-                return null;
-            return await GetGameStateAsync(game.Id);
+            var room = await _roomRepository.GetByIdWithPlayersAsync(roomId);
+            if (room == null)
+                throw new InvalidOperationException($"Room {roomId} not found");
+
+            return new RoomSummaryDto
+            {
+                Id = room.Id,
+                Name = room.Name,
+                Status = room.Status.ToString(),
+                CreatedAt = room.CreatedAt,
+                MaxPlayers = room.MaxPlayers,
+                CurrentPlayers = room.Players.Count,
+                PlayerNames = room.Players
+                    .OrderBy(p => p.JoinedAt)
+                    .Select(p => p.User.Username)
+                    .ToList()
+            };
         }
+
+
         // ==========================================================
         // CREATE GAME
         // ==========================================================
         public async Task<Game> CreateGameAsync(int roomId)
         {
-            var room = await _roomRepository.GetByIdWithPlayersAsync(roomId);
-            if (room == null)
-                throw new InvalidOperationException("Room not found");
+            var room = await _roomRepository.GetByIdWithPlayersAsync(roomId)
+                ?? throw new InvalidOperationException("Room not found");
 
             var playersInRoom = room.Players
                 .Where(p => p.RoomId == roomId && !p.GameId.HasValue)
                 .ToList();
 
             if (playersInRoom.Count < 2)
-                throw new InvalidOperationException($"Need at least 2 players (current: {playersInRoom.Count})");
+                throw new InvalidOperationException("Need at least 2 players");
 
             var game = new Game
             {
@@ -88,14 +108,14 @@ namespace Proyecto1.Services
             return game;
         }
 
+
         // ==========================================================
         // GET GAME STATE
         // ==========================================================
         public async Task<GameStateDto> GetGameStateAsync(int gameId)
         {
-            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
-            if (game == null)
-                throw new InvalidOperationException("Game not found");
+            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId)
+                ?? throw new InvalidOperationException("Game not found");
 
             var currentPlayer = _turnService.GetCurrentPlayer(game);
 
@@ -137,23 +157,32 @@ namespace Proyecto1.Services
                 },
 
                 WinnerPlayerId = game.WinnerPlayerId,
-                WinnerName = game.Players.FirstOrDefault(p => p.Id == game.WinnerPlayerId)?.User.Username
+                WinnerName = game.Players
+                    .FirstOrDefault(p => p.Id == game.WinnerPlayerId)
+                    ?.User.Username
             };
         }
+
 
         // ==========================================================
         // ROLL DICE AND MOVE
         // ==========================================================
         public async Task<MoveResultDto> RollDiceAndMoveAsync(int gameId, int userId)
         {
-            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
-            if (game == null) throw new InvalidOperationException("Game not found");
-            if (game.Status != GameStatus.InProgress) throw new InvalidOperationException("Game is not in progress");
+            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId)
+                ?? throw new InvalidOperationException("Game not found");
 
-            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId);
-            if (player == null) throw new InvalidOperationException("Player not in game");
-            if (!_turnService.IsPlayerTurn(game, player.Id)) throw new InvalidOperationException("Not your turn");
-            if (game.CurrentTurnPhase != TurnPhase.WaitingForDice) throw new InvalidOperationException("Dice already rolled");
+            if (game.Status != GameStatus.InProgress)
+                throw new InvalidOperationException("Game is not in progress");
+
+            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
+                ?? throw new InvalidOperationException("Player not in game");
+
+            if (!_turnService.IsPlayerTurn(game, player.Id))
+                throw new InvalidOperationException("Not your turn");
+
+            if (game.CurrentTurnPhase != TurnPhase.WaitingForDice)
+                throw new InvalidOperationException("Dice already rolled");
 
             int diceValue = _diceService.RollDice();
             int fromPosition = player.Position;
@@ -183,7 +212,6 @@ namespace Proyecto1.Services
             var snakeDest = _boardService.GetSnakeDestination(game.Board, toPosition);
             var ladderDest = _boardService.GetLadderDestination(game.Board, toPosition);
 
-            // PROFESOR
             if (snakeDest.HasValue && boardService != null)
             {
                 var profesorQuestion = boardService.GetProfesorQuestion(toPosition);
@@ -194,7 +222,7 @@ namespace Proyecto1.Services
                     result.ProfesorQuestion = profesorQuestion;
                     result.FinalPosition = toPosition;
                     result.SpecialEvent = "Profesor";
-                    result.Message = $"¡Has caído con el profesor {profesorQuestion.Profesor}!";
+                    result.Message = $"Has caído con el profesor {profesorQuestion.Profesor}!";
 
                     await _playerRepository.UpdateAsync(player);
                     await _gameRepository.UpdateAsync(game);
@@ -204,14 +232,14 @@ namespace Proyecto1.Services
                 player.Position = snakeDest.Value;
                 result.FinalPosition = snakeDest.Value;
                 result.SpecialEvent = "Profesor";
-                result.Message = $"Hit a profesor! Moved from {toPosition} to {snakeDest.Value}";
+                result.Message = $"Profesor! Mueves de {toPosition} a {snakeDest.Value}";
             }
             else if (ladderDest.HasValue)
             {
                 player.Position = ladderDest.Value;
                 result.FinalPosition = ladderDest.Value;
                 result.SpecialEvent = "Matón";
-                result.Message = $"Climbed a matón! Moved from {toPosition} to {ladderDest.Value}";
+                result.Message = $"Matón! Subes de {toPosition} a {ladderDest.Value}";
             }
             else
             {
@@ -227,7 +255,7 @@ namespace Proyecto1.Services
                 game.FinishedAt = DateTime.UtcNow;
 
                 result.IsWinner = true;
-                result.Message = "🎉 You won!";
+                result.Message = "🎉 ¡Ganaste!";
             }
             else if (!result.RequiresProfesorAnswer)
             {
@@ -240,8 +268,9 @@ namespace Proyecto1.Services
             return result;
         }
 
+
         // ==========================================================
-        // ANSWER PROFESOR QUESTION
+        // PROFESOR QUESTIONS
         // ==========================================================
         public async Task<ProfesorQuestionDto?> GetProfesorQuestionAsync(int gameId, int userId)
         {
@@ -254,8 +283,8 @@ namespace Proyecto1.Services
 
         public async Task<MoveResultDto> AnswerProfesorQuestionAsync(int gameId, int userId, string answer)
         {
-            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId);
-            if (player == null) throw new InvalidOperationException("Player not in game");
+            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
+                ?? throw new InvalidOperationException("Player not in game");
 
             var boardService = _boardService as BoardService
                 ?? throw new InvalidOperationException("Board service unavailable");
@@ -266,7 +295,6 @@ namespace Proyecto1.Services
             var result = new MoveResultDto
             {
                 FromPosition = player.Position,
-                ToPosition = player.Position,
                 FinalPosition = player.Position
             };
 
@@ -274,7 +302,7 @@ namespace Proyecto1.Services
 
             if (isCorrect)
             {
-                result.Message = "¡Correcto! No bajas.";
+                result.Message = "¡Correcto! Mantienes tu posición.";
             }
             else
             {
@@ -284,7 +312,7 @@ namespace Proyecto1.Services
                     player.Position = snakeDest.Value;
                     result.FinalPosition = snakeDest.Value;
                 }
-                result.Message = "Incorrecto! Has caído por el profesor.";
+                result.Message = "Incorrecto. El profesor te hace bajar.";
             }
 
             _turnService.AdvanceTurn(game);
@@ -294,21 +322,24 @@ namespace Proyecto1.Services
             return result;
         }
 
+
         // ==========================================================
         // SURRENDER
         // ==========================================================
         public async Task SurrenderAsync(int gameId, int userId)
         {
-            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId);
-            if (game == null) throw new InvalidOperationException("Game not found");
+            var game = await _gameRepository.GetByIdWithDetailsAsync(gameId)
+                ?? throw new InvalidOperationException("Game not found");
 
-            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId);
-            if (player == null) throw new InvalidOperationException("Player not in game");
+            var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
+                ?? throw new InvalidOperationException("Player not in game");
 
             player.Status = PlayerStatus.Surrendered;
             await _playerRepository.UpdateAsync(player);
 
-            var activePlayers = game.Players.Where(p => p.Status == PlayerStatus.Playing).ToList();
+            var activePlayers = game.Players
+                .Where(p => p.Status == PlayerStatus.Playing)
+                .ToList();
 
             if (activePlayers.Count == 1)
             {
