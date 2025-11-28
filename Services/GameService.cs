@@ -35,7 +35,14 @@ namespace Proyecto1.Services
             _turnService = turnService;
             _logger = logger;
         }
-
+        
+        public async Task<GameStateDto?> GetGameByRoomAsync(int roomId)
+        {
+            var game = await _gameRepository.GetByRoomIdAsync(roomId);
+            if (game == null)
+                return null;
+            return await GetGameStateAsync(game.Id);
+        }
         // ==========================================================
         // CREATE GAME
         // ==========================================================
