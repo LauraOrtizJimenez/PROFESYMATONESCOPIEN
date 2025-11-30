@@ -20,6 +20,9 @@ namespace Proyecto1.Services
         private readonly ITurnService _turnService;
         private readonly ILogger<GameService> _logger;
 
+        // 💰 Recompensa fija por victoria (puedes cambiarla si quieres)
+        private const int COINS_REWARD_ON_WIN = 20;
+
         public GameService(
             IGameRepository gameRepository,
             IRoomRepository roomRepository,
@@ -37,7 +40,6 @@ namespace Proyecto1.Services
             _turnService = turnService;
             _logger = logger;
         }
-
 
         // ==========================================================
         // 🔥 LOBBY SUMMARY (USADO POR SIGNALR)
@@ -60,10 +62,9 @@ namespace Proyecto1.Services
                     .OrderBy(p => p.JoinedAt)
                     .Select(p => p.User.Username)
                     .ToList(),
-                GameId = room.Game?.Id  
+                GameId = room.Game?.Id
             };
         }
-
 
         // ==========================================================
         // CREATE GAME
@@ -108,7 +109,6 @@ namespace Proyecto1.Services
 
             return game;
         }
-
 
         // ==========================================================
         // GET GAME STATE
@@ -163,7 +163,6 @@ namespace Proyecto1.Services
                     ?.User.Username
             };
         }
-
 
         // ==========================================================
         // ROLL DICE AND MOVE
@@ -248,12 +247,21 @@ namespace Proyecto1.Services
                 result.Message = "Normal move";
             }
 
+            // 💰 Si llegó a la meta -> marcar ganador y dar monedas
             if (player.Position >= game.Board.Size)
             {
                 player.Status = PlayerStatus.Winner;
                 game.Status = GameStatus.Finished;
                 game.WinnerPlayerId = player.Id;
                 game.FinishedAt = DateTime.UtcNow;
+
+                // Monedas y estadísticas al usuario ganador
+                if (player.User != null)
+                {
+                    player.User.GamesPlayed += 1;
+                    player.User.GamesWon += 1;
+                    player.User.Coins += COINS_REWARD_ON_WIN;
+                }
 
                 result.IsWinner = true;
                 result.Message = "🎉 ¡Ganaste!";
@@ -268,7 +276,6 @@ namespace Proyecto1.Services
 
             return result;
         }
-
 
         // ==========================================================
         // PROFESOR QUESTIONS
@@ -289,6 +296,10 @@ namespace Proyecto1.Services
 
             var boardService = _boardService as BoardService
                 ?? throw new InvalidOperationException("Board service unavailable");
+
+            // ✅ FIX CS8629: asegurar que GameId no es null antes de usar .Value
+            if (!player.GameId.HasValue)
+                throw new InvalidOperationException("Player is not attached to any game");
 
             var game = await _gameRepository.GetByIdWithDetailsAsync(player.GameId.Value)
                 ?? throw new InvalidOperationException("Game not found");
@@ -323,7 +334,6 @@ namespace Proyecto1.Services
             return result;
         }
 
-
         // ==========================================================
         // SURRENDER
         // ==========================================================
@@ -334,6 +344,12 @@ namespace Proyecto1.Services
 
             var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
                 ?? throw new InvalidOperationException("Player not in game");
+
+            // (Opcional) contar partida jugada del que se rinde
+            if (player.User != null)
+            {
+                player.User.GamesPlayed += 1;
+            }
 
             player.Status = PlayerStatus.Surrendered;
             await _playerRepository.UpdateAsync(player);
@@ -350,6 +366,14 @@ namespace Proyecto1.Services
                 game.Status = GameStatus.Finished;
                 game.WinnerPlayerId = winner.Id;
                 game.FinishedAt = DateTime.UtcNow;
+
+                // 💰 También dar monedas si se gana porque todos se rindieron
+                if (winner.User != null)
+                {
+                    winner.User.GamesPlayed += 1;
+                    winner.User.GamesWon += 1;
+                    winner.User.Coins += COINS_REWARD_ON_WIN;
+                }
 
                 await _playerRepository.UpdateAsync(winner);
             }

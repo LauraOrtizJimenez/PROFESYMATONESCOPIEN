@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Proyecto1.DTOs.Lobby;
-using Proyecto1.Services;
-using System.Security.Claims;
 using Proyecto1.Services.Interfaces;
+using System.Security.Claims;
 
 namespace Proyecto1.Controllers
 {
@@ -22,7 +21,7 @@ namespace Proyecto1.Controllers
         }
 
         // ==========================================================
-        // POST api/Lobby/rooms   → Crear sala
+        // POST api/Lobby/rooms   → Crear sala (pública / privada)
         // ==========================================================
         [HttpPost("rooms")]
         public async Task<ActionResult<RoomSummaryDto>> CreateRoom([FromBody] CreateRoomRequest request)
@@ -31,10 +30,17 @@ namespace Proyecto1.Controllers
 
             try
             {
-                var room = await _roomService.CreateRoomAsync(request.Name, request.MaxPlayers, userId);
+                // Pasamos IsPrivate y AccessCode al servicio
+                var room = await _roomService.CreateRoomAsync(
+                    request.Name,
+                    request.MaxPlayers,
+                    userId,
+                    request.IsPrivate,
+                    request.AccessCode
+                );
 
                 // Auto-join del creador
-                var player = await _roomService.JoinRoomAsync(room.Id, userId);
+                var player = await _roomService.JoinRoomAsync(room.Id, userId, null);
 
                 // Recargar room con players actualizados
                 var roomDetail = await _roomService.GetRoomWithDetailsAsync(room.Id);
@@ -48,18 +54,15 @@ namespace Proyecto1.Controllers
                 {
                     Id = roomDetail.Id,
                     Name = roomDetail.Name,
-
-                    // 🔴 ANTES: CurrentPlayers = roomDetail.CurrentPlayers,
-                    // ✅ AHORA: sacamos el número real de la lista de jugadores
                     CurrentPlayers = roomDetail.Players.Count,
-
                     MaxPlayers = roomDetail.MaxPlayers,
                     Status = roomDetail.Status.ToString(),
                     CreatedAt = roomDetail.CreatedAt,
                     PlayerNames = roomDetail.Players
                         .Select(p => p.User.Username)
                         .ToList(),
-                    GameId = roomDetail.Game?.Id
+                    GameId = roomDetail.Game?.Id,
+                    IsPrivate = roomDetail.IsPrivate
                 });
             }
             catch (Exception ex)
@@ -79,7 +82,8 @@ namespace Proyecto1.Controllers
 
             try
             {
-                await _roomService.JoinRoomAsync(request.RoomId, userId);
+                // Pasamos AccessCode al servicio (puede ser null para públicas)
+                await _roomService.JoinRoomAsync(request.RoomId, userId, request.AccessCode);
 
                 var room = await _roomService.GetRoomWithDetailsAsync(request.RoomId);
 
@@ -93,17 +97,15 @@ namespace Proyecto1.Controllers
                     {
                         Id = room.Id,
                         Name = room.Name,
-
-                        // 🔁 Igual aquí: contar jugadores reales
                         CurrentPlayers = room.Players.Count,
-
                         MaxPlayers = room.MaxPlayers,
                         Status = room.Status.ToString(),
                         CreatedAt = room.CreatedAt,
                         PlayerNames = room.Players
                             .Select(p => p.User.Username)
                             .ToList(),
-                        GameId = room.Game?.Id
+                        GameId = room.Game?.Id,
+                        IsPrivate = room.IsPrivate
                     }
                 });
             }
@@ -115,7 +117,7 @@ namespace Proyecto1.Controllers
         }
 
         // ==========================================================
-        // GET api/Lobby/rooms   → Listar salas disponibles
+        // GET api/Lobby/rooms   → Listar salas disponibles (solo públicas)
         // ==========================================================
         [HttpGet("rooms")]
         public async Task<ActionResult<List<RoomSummaryDto>>> GetAvailableRooms()
@@ -124,21 +126,24 @@ namespace Proyecto1.Controllers
             {
                 var rooms = await _roomService.GetAvailableRoomsAsync();
 
-                var roomDtos = rooms.Select(r => new RoomSummaryDto
+                // En el listado general solo mostramos salas públicas
+                var publicRooms = rooms
+                    .Where(r => !r.IsPrivate)
+                    .ToList();
+
+                var roomDtos = publicRooms.Select(r => new RoomSummaryDto
                 {
                     Id = r.Id,
                     Name = r.Name,
-
-                    // 🔁 Aquí también usamos la lista de Players
                     CurrentPlayers = r.Players.Count,
-
                     MaxPlayers = r.MaxPlayers,
                     Status = r.Status.ToString(),
                     CreatedAt = r.CreatedAt,
                     PlayerNames = r.Players
                         .Select(p => p.User.Username)
                         .ToList(),
-                    GameId = r.Game?.Id
+                    GameId = r.Game?.Id,
+                    IsPrivate = r.IsPrivate // aquí siempre false, pero explícito
                 }).ToList();
 
                 return Ok(roomDtos);
@@ -152,6 +157,7 @@ namespace Proyecto1.Controllers
 
         // ==========================================================
         // GET api/Lobby/rooms/{roomId}   → Detalle de una sala
+        // (permite ver privadas si tienes el ID)
         // ==========================================================
         [HttpGet("rooms/{roomId}")]
         public async Task<ActionResult<RoomSummaryDto>> GetRoom(int roomId)
@@ -167,17 +173,15 @@ namespace Proyecto1.Controllers
                 {
                     Id = room.Id,
                     Name = room.Name,
-
-                    // 🔁 Y aquí igual:
                     CurrentPlayers = room.Players.Count,
-
                     MaxPlayers = room.MaxPlayers,
                     Status = room.Status.ToString(),
                     CreatedAt = room.CreatedAt,
                     PlayerNames = room.Players
                         .Select(p => p.User.Username)
                         .ToList(),
-                    GameId = room.Game?.Id
+                    GameId = room.Game?.Id,
+                    IsPrivate = room.IsPrivate
                 });
             }
             catch (Exception ex)

@@ -10,6 +10,10 @@ using System.Text;
 using Proyecto1.Infrastructure.Repositories.Interfaces;
 using Proyecto1.Services.Interfaces;
 
+// 🔥 NUEVOS USING PARA SEED
+using System.Security.Cryptography;
+using Proyecto1.Models;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -103,7 +107,7 @@ builder.Services.AddSignalR(options =>
     options.MaximumReceiveMessageSize = 102400; // 100 KB
 });
 
-// CORS (permisos o controles que aseguran que solo ciertas ubicaciones puedan entrar al hub, osea la conexion, eso te limita en caso de seguridad. como nosotros usarmemos en varios, para que todos esten permitidos.
+// CORS 
 builder.Services.AddCors(options =>
 {
     // Política general para la API REST
@@ -174,7 +178,7 @@ app.MapGet("/health", () => Results.Ok(new
     environment = app.Environment.EnvironmentName
 }));
 
-// Database initialization (optional)
+// Database initialization (optional) + SEED ADMIN & SKINS
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -190,11 +194,14 @@ using (var scope = app.Services.CreateScope())
                 var pendingMigrations = context.Database.GetPendingMigrations();
                 if (pendingMigrations.Any())
                 {
-                    Console.WriteLine($"⚠️ Applying {pendingMigrations.Count()} pending migrations...");
+                    Console.WriteLine($"⚠ Applying {pendingMigrations.Count()} pending migrations...");
                     context.Database.Migrate();
                     Console.WriteLine("✅ Migrations applied successfully!");
                 }
             }
+
+            // 🔥 SEED ADMIN + SKINS BÁSICAS
+            SeedAdminAndSkins(context);
         }
         else
         {
@@ -215,3 +222,70 @@ Console.WriteLine($"🌐 Swagger UI: https://localhost:{builder.Configuration["K
 Console.WriteLine($"🎮 SignalR Hub: wss://localhost:{builder.Configuration["Kestrel:Endpoints:Https:Port"] ?? "5001"}/hubs/game");
 
 app.Run();
+
+// ===================== SEED ADMIN + SKINS =====================
+static void SeedAdminAndSkins(AppDbContext context)
+{
+    // 1) Usuario admin
+    var admin = context.Users.FirstOrDefault(u => u.Username == "admin");
+    if (admin == null)
+    {
+        using var sha256 = SHA256.Create();
+        var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes("admindemo"));
+        var passwordHash = Convert.ToBase64String(hashedBytes);
+
+        admin = new User
+        {
+            Username = "admin",
+            Email = "admin@demo.com",
+            PasswordHash = passwordHash,
+            Coins = 9999
+        };
+
+        context.Users.Add(admin);
+        Console.WriteLine("🧑‍💻 Admin creado: admin / admindemo");
+    }
+
+    // 2) Skins básicas
+    if (!context.TokenSkins.Any())
+    {
+        context.TokenSkins.AddRange(
+            new TokenSkin
+            {
+                Name = "Clásico Verde",
+                ColorKey = "green",
+                IconKey = "classic",
+                PriceCoins = 0,
+                IsActive = true
+            },
+            new TokenSkin
+            {
+                Name = "Clásico Azul",
+                ColorKey = "blue",
+                IconKey = "classic",
+                PriceCoins = 0,
+                IsActive = true
+            },
+            new TokenSkin
+            {
+                Name = "Nerd 🤓",
+                ColorKey = "purple",
+                IconKey = "nerd",
+                PriceCoins = 10,
+                IsActive = true
+            },
+            new TokenSkin
+            {
+                Name = "Enojado 😡",
+                ColorKey = "red",
+                IconKey = "angry",
+                PriceCoins = 15,
+                IsActive = true
+            }
+        );
+
+        Console.WriteLine("🎨 Skins básicas creadas");
+    }
+
+    context.SaveChanges();
+}

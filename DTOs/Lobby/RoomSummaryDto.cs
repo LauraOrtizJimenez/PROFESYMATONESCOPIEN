@@ -9,6 +9,9 @@ namespace Proyecto1.DTOs.Lobby
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public List<string> PlayerNames { get; set; } = new();
-        public int? GameId { get; set; } 
+        public int? GameId { get; set; }
+
+        // 🔐 NUEVO: indica si la sala es privada o pública
+        public bool IsPrivate { get; set; }
     }
 }

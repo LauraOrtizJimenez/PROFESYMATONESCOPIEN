@@ -19,6 +19,19 @@ namespace Proyecto1.Models
         
         public int CreatorUserId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // 🔐 NUEVO: privacidad de la sala
+        /// <summary>
+        /// false = pública (aparece en el listado),
+        /// true  = privada (oculta del listado / requiere código).
+        /// </summary>
+        public bool IsPrivate { get; set; } = false;
+
+        /// <summary>
+        /// Código de acceso opcional para salas privadas.
+        /// Si no quieres manejar password, puedes dejarlo siempre null.
+        /// </summary>
+        public string? AccessCode { get; set; }
         
         // Navigation
         public Game? Game { get; set; }

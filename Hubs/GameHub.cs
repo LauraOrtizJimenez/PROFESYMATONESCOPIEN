@@ -98,7 +98,6 @@ namespace Proyecto1.Hubs
         // ============================================================
         // 🔥 GAME EVENTS
         // ============================================================
-
         public async Task JoinGameGroup(int gameId)
         {
             var uid = GetUserId();
@@ -225,7 +224,7 @@ namespace Proyecto1.Hubs
         }
 
         // ============================================================
-        // SURRENDER
+        // 🔥 NEW: SURRENDER
         // ============================================================
         public async Task SendSurrender(int gameId)
         {
@@ -259,6 +258,30 @@ namespace Proyecto1.Hubs
             }
         }
 
+        // ============================================================
+        // 🔥 NEW: EMOTES EN PARTIDA
+        // ============================================================
+        public async Task SendEmote(int gameId, string emoteId)
+        {
+            var uid = GetUserId();
+            var username = GetUserName();
+            var group = $"Game_{gameId}";
+
+            var payload = new
+            {
+                GameId = gameId,
+                EmoteId = emoteId,
+                UserId = uid,
+                Username = username,
+                SentAt = DateTime.UtcNow
+            };
+
+            await Clients.Group(group).SendAsync("ReceiveEmote", payload);
+        }
+
+        // ============================================================
+        // REQUEST GAME STATE (para recarga manual)
+        // ============================================================
         public async Task RequestGameState(int gameId)
         {
             try

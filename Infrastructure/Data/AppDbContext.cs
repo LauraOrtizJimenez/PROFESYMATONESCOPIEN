@@ -19,27 +19,43 @@ namespace Proyecto1.Infrastructure.Data
         public DbSet<Move> Moves { get; set; }
         public DbSet<DiceRoll> DiceRolls { get; set; }
 
+        // 🔥 NUEVO
+        public DbSet<TokenSkin> TokenSkins { get; set; }
+        public DbSet<UserTokenSkin> UserTokenSkins { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // User Configuration
+            // ================= USER =================
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasIndex(e => e.Username).IsUnique();
                 entity.HasIndex(e => e.Email).IsUnique();
+
+                // 1 (User) -> N (UserTokenSkin)
+                entity.HasMany(u => u.OwnedTokenSkins)
+                    .WithOne(uts => uts.User)
+                    .HasForeignKey(uts => uts.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // 1 (User) -> 0..1 (SelectedTokenSkin)
+                entity.HasOne(u => u.SelectedTokenSkin)
+                    .WithMany()
+                    .HasForeignKey(u => u.SelectedTokenSkinId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
-            // Room Configuration
+            // ================= ROOM =================
             modelBuilder.Entity<Room>(entity =>
             {
                 entity.HasOne(r => r.Game)
                     .WithOne(g => g.Room)
                     .HasForeignKey<Game>(g => g.RoomId)
-                    .OnDelete(DeleteBehavior.Restrict); // ✅ CAMBIO: Restrict en vez de Cascade
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // Game Configuration
+            // ================= GAME =================
             modelBuilder.Entity<Game>(entity =>
             {
                 entity.HasOne(g => g.Board)
@@ -51,7 +67,7 @@ namespace Proyecto1.Infrastructure.Data
                     .IsRowVersion();
             });
 
-            // Player Configuration - AQUÍ ESTÁ EL PROBLEMA PRINCIPAL
+            // ================= PLAYER =================
             modelBuilder.Entity<Player>(entity =>
             {
                 entity.HasOne(p => p.User)
@@ -62,7 +78,7 @@ namespace Proyecto1.Infrastructure.Data
                 entity.HasOne(p => p.Game)
                     .WithMany(g => g.Players)
                     .HasForeignKey(p => p.GameId)
-                    .IsRequired(false) // ✅ Permitir NULL
+                    .IsRequired(false)
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(p => p.Room)
@@ -70,13 +86,12 @@ namespace Proyecto1.Infrastructure.Data
                     .HasForeignKey(p => p.RoomId)
                     .OnDelete(DeleteBehavior.SetNull);
 
-                // ✅ Índice solo cuando GameId no es null
                 entity.HasIndex(p => new { p.GameId, p.TurnOrder })
                     .IsUnique()
                     .HasFilter("[GameId] IS NOT NULL");
             });
-            
-            // Board Configuration
+
+            // ================= BOARD =================
             modelBuilder.Entity<Board>(entity =>
             {
                 entity.HasMany(b => b.Snakes)
@@ -90,7 +105,7 @@ namespace Proyecto1.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Move Configuration
+            // ================= MOVE =================
             modelBuilder.Entity<Move>(entity =>
             {
                 entity.HasOne(m => m.Game)
@@ -101,13 +116,52 @@ namespace Proyecto1.Infrastructure.Data
                 entity.HasOne(m => m.Player)
                     .WithMany(p => p.Moves)
                     .HasForeignKey(m => m.PlayerId)
-                    .OnDelete(DeleteBehavior.Restrict); // ✅ NO ACTION para evitar ciclos
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // DiceRoll Configuration (opcional - para auditoría)
+            // ================= DICEROLL =================
             modelBuilder.Entity<DiceRoll>(entity =>
             {
                 entity.HasIndex(e => new { e.GameId, e.PlayerId, e.RolledAt });
+            });
+
+            // ================= TOKEN SKIN =================
+            modelBuilder.Entity<TokenSkin>(entity =>
+            {
+                entity.HasIndex(t => t.Name).IsUnique();
+
+                entity.Property(t => t.Name)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(t => t.ColorKey)
+                    .HasMaxLength(50);
+
+                entity.Property(t => t.IconKey)
+                    .HasMaxLength(50);
+
+                // 👈 AQUÍ ESTABA EL ERROR: usar PriceCoins
+                entity.Property(t => t.PriceCoins)
+                    .HasDefaultValue(0);
+
+                entity.Property(t => t.IsActive)
+                    .HasDefaultValue(true);
+            });
+
+            // ================= USER TOKEN SKIN (M:N) =================
+            modelBuilder.Entity<UserTokenSkin>(entity =>
+            {
+                entity.HasKey(uts => new { uts.UserId, uts.TokenSkinId });
+
+                entity.HasOne(uts => uts.User)
+                    .WithMany(u => u.OwnedTokenSkins)
+                    .HasForeignKey(uts => uts.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(uts => uts.TokenSkin)
+                    .WithMany(s => s.Owners)
+                    .HasForeignKey(uts => uts.TokenSkinId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }
