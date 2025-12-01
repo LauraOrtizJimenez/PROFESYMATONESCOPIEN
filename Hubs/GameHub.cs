@@ -17,9 +17,6 @@ namespace Proyecto1.Hubs
             _logger = logger;
         }
 
-        // ================================================
-        // UTILS
-        // ================================================
         private string GetUserId()
         {
             return Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -31,9 +28,6 @@ namespace Proyecto1.Hubs
             return Context.User?.Identity?.Name ?? "Unknown";
         }
 
-        // ================================================
-        // CONNECTION EVENTS
-        // ================================================
         public override async Task OnConnectedAsync()
         {
             var uid = GetUserId();
@@ -49,7 +43,7 @@ namespace Proyecto1.Hubs
         }
 
         // ============================================================
-        // 🔥 LOBBY EVENTS 
+        // LOBBY EVENTS
         // ============================================================
         public async Task JoinLobbyGroup(int roomId)
         {
@@ -58,9 +52,6 @@ namespace Proyecto1.Hubs
             var group = $"Lobby_{roomId}";
 
             await Groups.AddToGroupAsync(Context.ConnectionId, group);
-
-            _logger.LogInformation($"[SignalR] {username} joined lobby {roomId}");
-
             await Clients.OthersInGroup(group).SendAsync("LobbyPlayerJoined", new
             {
                 UserId = uid,
@@ -78,9 +69,6 @@ namespace Proyecto1.Hubs
             var group = $"Lobby_{roomId}";
 
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);
-
-            _logger.LogInformation($"[SignalR] {username} left lobby {roomId}");
-
             await Clients.OthersInGroup(group).SendAsync("LobbyPlayerLeft", new
             {
                 UserId = uid,
@@ -96,7 +84,7 @@ namespace Proyecto1.Hubs
         }
 
         // ============================================================
-        // 🔥 GAME EVENTS
+        // GAME EVENTS
         // ============================================================
         public async Task JoinGameGroup(int gameId)
         {
@@ -105,9 +93,6 @@ namespace Proyecto1.Hubs
             var group = $"Game_{gameId}";
 
             await Groups.AddToGroupAsync(Context.ConnectionId, group);
-
-            _logger.LogInformation($"[SignalR] {username} joined game {gameId}");
-
             await Clients.OthersInGroup(group).SendAsync("PlayerJoined", username);
 
             try
@@ -128,8 +113,6 @@ namespace Proyecto1.Hubs
             var username = GetUserName();
             var group = $"Game_{gameId}";
 
-            _logger.LogInformation($"[SignalR] {username} left game {gameId}");
-
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);
             await Clients.OthersInGroup(group).SendAsync("PlayerLeft", username);
         }
@@ -144,13 +127,11 @@ namespace Proyecto1.Hubs
             {
                 var move = await _gameService.RollDiceAndMoveAsync(gameId, int.Parse(uid));
 
-                // Si hay pregunta de profesor, enviarla solo al jugador
                 if (move.RequiresProfesorAnswer && move.ProfesorQuestion != null)
                 {
                     await Clients.Caller.SendAsync("ReceiveProfesorQuestion", move.ProfesorQuestion);
                 }
 
-                // Notificar movimiento
                 await Clients.Group(group).SendAsync("MoveCompleted", new
                 {
                     UserId = uid,
@@ -158,7 +139,6 @@ namespace Proyecto1.Hubs
                     MoveResult = move
                 });
 
-                // Enviar estado actualizado
                 var state = await _gameService.GetGameStateAsync(gameId);
                 await Clients.Group(group).SendAsync("GameStateUpdate", state);
 
@@ -179,9 +159,6 @@ namespace Proyecto1.Hubs
             }
         }
 
-        // ============================================================
-        // 🔥 NEW: ANSWER PROFESOR QUESTION
-        // ============================================================
         public async Task AnswerProfesorQuestion(int gameId, string answer)
         {
             var uid = GetUserId();
@@ -191,10 +168,7 @@ namespace Proyecto1.Hubs
             try
             {
                 var result = await _gameService.AnswerProfesorQuestionAsync(
-                    gameId,
-                    int.Parse(uid),
-                    answer
-                );
+                    gameId, int.Parse(uid), answer);
 
                 await Clients.Group(group).SendAsync("MoveCompleted", new
                 {
@@ -224,7 +198,7 @@ namespace Proyecto1.Hubs
         }
 
         // ============================================================
-        // 🔥 NEW: SURRENDER
+        // 🔥 SURRENDER — COMPLETO Y CORRECTO
         // ============================================================
         public async Task SendSurrender(int gameId)
         {
@@ -236,18 +210,25 @@ namespace Proyecto1.Hubs
             {
                 await _gameService.SurrenderAsync(gameId, int.Parse(uid));
 
-                await Clients.Group(group).SendAsync("PlayerSurrendered", username);
+                await Clients.Group(group).SendAsync("PlayerSurrendered", new
+                {
+                    GameId = gameId,
+                    UserId = uid,
+                    Username = username,
+                    Message = $"{username} ha tirado la toalla 😢"
+                });
 
                 var state = await _gameService.GetGameStateAsync(gameId);
                 await Clients.Group(group).SendAsync("GameStateUpdate", state);
 
-                if (state.Status == "Finished")
+                if (state.Status.Equals("Finished", StringComparison.OrdinalIgnoreCase))
                 {
                     await Clients.Group(group).SendAsync("GameFinished", new
                     {
+                        GameId = gameId,
                         WinnerId = state.WinnerPlayerId,
                         WinnerName = state.WinnerName,
-                        Reason = "Other players surrendered"
+                        Reason = "A player surrendered"
                     });
                 }
             }
@@ -259,7 +240,7 @@ namespace Proyecto1.Hubs
         }
 
         // ============================================================
-        // 🔥 NEW: EMOTES EN PARTIDA
+        // EMOTES
         // ============================================================
         public async Task SendEmote(int gameId, string emoteId)
         {
@@ -279,9 +260,6 @@ namespace Proyecto1.Hubs
             await Clients.Group(group).SendAsync("ReceiveEmote", payload);
         }
 
-        // ============================================================
-        // REQUEST GAME STATE (para recarga manual)
-        // ============================================================
         public async Task RequestGameState(int gameId)
         {
             try
@@ -291,7 +269,6 @@ namespace Proyecto1.Hubs
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading game state");
                 await Clients.Caller.SendAsync("Error", ex.Message);
             }
         }

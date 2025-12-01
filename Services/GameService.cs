@@ -21,7 +21,6 @@ namespace Proyecto1.Services
         private readonly ITurnService _turnService;
         private readonly ILogger<GameService> _logger;
 
-        // 💰 Recompensa fija por victoria
         private const int COINS_REWARD_ON_WIN = 20;
 
         public GameService(
@@ -43,13 +42,12 @@ namespace Proyecto1.Services
         }
 
         // ==========================================================
-        // 🔥 LOBBY SUMMARY (USADO POR SIGNALR)
+        // 🔥 LOBBY SUMMARY
         // ==========================================================
         public async Task<RoomSummaryDto> GetRoomSummaryAsync(int roomId)
         {
-            var room = await _roomRepository.GetByIdWithPlayersAsync(roomId);
-            if (room == null)
-                throw new InvalidOperationException($"Room {roomId} not found");
+            var room = await _roomRepository.GetByIdWithPlayersAsync(roomId)
+                ?? throw new InvalidOperationException($"Room {roomId} not found");
 
             return new RoomSummaryDto
             {
@@ -112,7 +110,7 @@ namespace Proyecto1.Services
         }
 
         // ==========================================================
-        // GET GAME STATE  ✅ (CON SKINS)
+        // GET GAME STATE
         // ==========================================================
         public async Task<GameStateDto> GetGameStateAsync(int gameId)
         {
@@ -144,13 +142,8 @@ namespace Proyecto1.Services
                         Status = p.Status.ToString(),
                         IsCurrentTurn = p.Id == currentPlayer?.Id,
 
-                        // 🎨 SKIN HACIA EL FRONT
-                        TokenColorKey = p.User.SelectedTokenSkin != null
-                            ? p.User.SelectedTokenSkin.ColorKey
-                            : null,
-                        TokenIconKey = p.User.SelectedTokenSkin != null
-                            ? p.User.SelectedTokenSkin.IconKey
-                            : null
+                        TokenColorKey = p.User.SelectedTokenSkin?.ColorKey,
+                        TokenIconKey = p.User.SelectedTokenSkin?.IconKey
                     })
                     .ToList(),
 
@@ -259,7 +252,6 @@ namespace Proyecto1.Services
                 result.Message = "Normal move";
             }
 
-            // 💰 Si llegó a la meta -> marcar ganador y dar monedas
             if (player.Position >= game.Board.Size)
             {
                 player.Status = PlayerStatus.Winner;
@@ -289,7 +281,7 @@ namespace Proyecto1.Services
         }
 
         // ==========================================================
-        // PROFESOR QUESTIONS
+        // PROFESOR
         // ==========================================================
         public async Task<ProfesorQuestionDto?> GetProfesorQuestionAsync(int gameId, int userId)
         {
@@ -345,7 +337,7 @@ namespace Proyecto1.Services
         }
 
         // ==========================================================
-        // SURRENDER
+        // 🔥 SURRENDER (COMPLETO Y CORRECTO)
         // ==========================================================
         public async Task SurrenderAsync(int gameId, int userId)
         {
@@ -355,13 +347,23 @@ namespace Proyecto1.Services
             var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
                 ?? throw new InvalidOperationException("Player not in game");
 
+            if (game.Status == GameStatus.Finished)
+                return;
+
+            if (player.Status == PlayerStatus.Surrendered ||
+                player.Status == PlayerStatus.Winner)
+                return;
+
             if (player.User != null)
-            {
-                player.User.GamesPlayed += 1;
-            }
+                player.User.GamesPlayed++;
 
             player.Status = PlayerStatus.Surrendered;
             await _playerRepository.UpdateAsync(player);
+
+            if (_turnService.IsPlayerTurn(game, player.Id))
+            {
+                _turnService.AdvanceTurn(game);
+            }
 
             var activePlayers = game.Players
                 .Where(p => p.Status == PlayerStatus.Playing)
