@@ -15,6 +15,6 @@ namespace Proyecto1.DTOs.Games
         public BoardStateDto Board { get; set; } = new();
 
         public int? WinnerPlayerId { get; set; }
-        public string? WinnerName { get; set; }
+        public string? WinnerName { get; set; }
     }
 }

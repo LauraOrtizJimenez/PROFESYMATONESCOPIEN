@@ -23,11 +23,12 @@ namespace Proyecto1.Infrastructure.Repositories
         {
             return await _context.Games
                 .Include(g => g.Board)
-                .ThenInclude(b => b.Snakes)
+                    .ThenInclude(b => b.Snakes)
                 .Include(g => g.Board)
-                .ThenInclude(b => b.Ladders)
+                    .ThenInclude(b => b.Ladders)
                 .Include(g => g.Players)
-                .ThenInclude(p => p.User)
+                    .ThenInclude(p => p.User)
+                        .ThenInclude(u => u.SelectedTokenSkin)   // 👈 SKIN
                 .Include(g => g.Moves)
                 .Include(g => g.Room)
                 .FirstOrDefaultAsync(g => g.Id == id);
@@ -51,20 +52,23 @@ namespace Proyecto1.Infrastructure.Repositories
         {
             return await _context.Games
                 .Include(g => g.Players)
-                .ThenInclude(p => p.User)
+                    .ThenInclude(p => p.User)
+                        .ThenInclude(u => u.SelectedTokenSkin)   // (opcional, pero útil)
                 .Where(g => g.Players.Any(p => p.UserId == userId))
                 .OrderByDescending(g => g.StartedAt)
                 .ToListAsync();
         }
+
         public async Task<Game?> GetByRoomIdAsync(int roomId)
         {
             return await _context.Games
                 .Include(g => g.Board)
-                .ThenInclude(b => b.Snakes)
+                    .ThenInclude(b => b.Snakes)
                 .Include(g => g.Board)
-                .ThenInclude(b => b.Ladders)
+                    .ThenInclude(b => b.Ladders)
                 .Include(g => g.Players)
-                .ThenInclude(p => p.User)
+                    .ThenInclude(p => p.User)
+                        .ThenInclude(u => u.SelectedTokenSkin)   // 👈 SKIN aquí también
                 .Include(g => g.Moves)
                 .Include(g => g.Room)
                 .OrderByDescending(g => g.StartedAt)

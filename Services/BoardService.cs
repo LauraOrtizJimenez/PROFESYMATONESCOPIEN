@@ -17,8 +17,8 @@ namespace Proyecto1.Services
             { 56, ("Melisa", 36, "3(x - 2) = 15", new(){{"A","x=6"},{"B","x=7"},{"C","x=8"}}, "B") },
             { 53, ("Infantas", 49, "10 - 2x = 4", new(){{"A","x=2"},{"B","x=4"},{"C","x=3"}}, "C") },
             { 94, ("Bojanic", 74, "x + 11 = 3x - 1", new(){{"A","x=6"},{"B","x=5"},{"C","x=4"}}, "A") },
-            { 99, ("Enrique", 78, "x/4 + 2 = 6", new(){{"A","x=12"},{"B","x=16"},{"C","x=20"}}, "B") },
-            { 89, ("Sapag", 71, "8x + 1 = 41", new(){{"A","x=4"},{"B","x=5"},{"C","x=6"}}, "B") }
+            { 99, ("Claudio", 78, "x/4 + 2 = 6", new(){{"A","x=12"},{"B","x=16"},{"C","x=20"}}, "B") },
+            { 89, ("Jose Andres", 71, "8x + 1 = 41", new(){{"A","x=4"},{"B","x=5"},{"C","x=6"}}, "B") }
         };
 
         public Board GenerateBoard(int gameId, int size = 100)

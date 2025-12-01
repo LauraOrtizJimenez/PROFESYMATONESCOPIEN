@@ -51,7 +51,8 @@ namespace Proyecto1.Controllers
             {
                 Token = token,
                 Username = user.Username,
-                UserId = user.Id
+                UserId = user.Id,
+                Wins = user.GamesWon  // 👈 AGREGAR ESTA LÍNEA
             });
         }
 
@@ -71,7 +72,8 @@ namespace Proyecto1.Controllers
             {
                 Token = token,
                 Username = user.Username,
-                UserId = user.Id
+                UserId = user.Id,
+                Wins = user.GamesWon  // 👈 AGREGAR ESTA LÍNEA
             });
         }
 

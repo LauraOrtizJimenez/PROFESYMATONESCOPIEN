@@ -11,6 +11,10 @@ namespace Proyecto1.DTOs.Games
 
         public string Status { get; set; } = string.Empty;
 
-        public bool IsCurrentTurn { get; set; }
+        public bool IsCurrentTurn { get; set; }
+
+        // 🎨 SKIN SELECCIONADA (viaja al front)
+        public string? TokenColorKey { get; set; }
+        public string? TokenIconKey { get; set; }
     }
 }

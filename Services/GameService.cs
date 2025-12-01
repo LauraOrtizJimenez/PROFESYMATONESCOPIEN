@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Extensions.Logging;
 using Proyecto1.DTOs.Games;
 using Proyecto1.DTOs.Lobby;
 using Proyecto1.DTOs.Moves;
@@ -20,7 +21,7 @@ namespace Proyecto1.Services
         private readonly ITurnService _turnService;
         private readonly ILogger<GameService> _logger;
 
-        // 💰 Recompensa fija por victoria (puedes cambiarla si quieres)
+        // 💰 Recompensa fija por victoria
         private const int COINS_REWARD_ON_WIN = 20;
 
         public GameService(
@@ -111,7 +112,7 @@ namespace Proyecto1.Services
         }
 
         // ==========================================================
-        // GET GAME STATE
+        // GET GAME STATE  ✅ (CON SKINS)
         // ==========================================================
         public async Task<GameStateDto> GetGameStateAsync(int gameId)
         {
@@ -131,16 +132,27 @@ namespace Proyecto1.Services
                 CurrentPlayerId = currentPlayer?.Id,
                 CurrentPlayerName = currentPlayer?.User.Username,
 
-                Players = game.Players.Select(p => new PlayerGameDto
-                {
-                    PlayerId = p.Id,
-                    UserId = p.UserId,
-                    Username = p.User.Username,
-                    Position = p.Position,
-                    TurnOrder = p.TurnOrder,
-                    Status = p.Status.ToString(),
-                    IsCurrentTurn = p.Id == currentPlayer?.Id
-                }).ToList(),
+                Players = game.Players
+                    .OrderBy(p => p.TurnOrder)
+                    .Select(p => new PlayerGameDto
+                    {
+                        PlayerId = p.Id,
+                        UserId = p.UserId,
+                        Username = p.User.Username,
+                        Position = p.Position,
+                        TurnOrder = p.TurnOrder,
+                        Status = p.Status.ToString(),
+                        IsCurrentTurn = p.Id == currentPlayer?.Id,
+
+                        // 🎨 SKIN HACIA EL FRONT
+                        TokenColorKey = p.User.SelectedTokenSkin != null
+                            ? p.User.SelectedTokenSkin.ColorKey
+                            : null,
+                        TokenIconKey = p.User.SelectedTokenSkin != null
+                            ? p.User.SelectedTokenSkin.IconKey
+                            : null
+                    })
+                    .ToList(),
 
                 Board = new BoardStateDto
                 {
@@ -255,7 +267,6 @@ namespace Proyecto1.Services
                 game.WinnerPlayerId = player.Id;
                 game.FinishedAt = DateTime.UtcNow;
 
-                // Monedas y estadísticas al usuario ganador
                 if (player.User != null)
                 {
                     player.User.GamesPlayed += 1;
@@ -297,7 +308,6 @@ namespace Proyecto1.Services
             var boardService = _boardService as BoardService
                 ?? throw new InvalidOperationException("Board service unavailable");
 
-            // ✅ FIX CS8629: asegurar que GameId no es null antes de usar .Value
             if (!player.GameId.HasValue)
                 throw new InvalidOperationException("Player is not attached to any game");
 
@@ -345,7 +355,6 @@ namespace Proyecto1.Services
             var player = await _playerRepository.GetByGameAndUserAsync(gameId, userId)
                 ?? throw new InvalidOperationException("Player not in game");
 
-            // (Opcional) contar partida jugada del que se rinde
             if (player.User != null)
             {
                 player.User.GamesPlayed += 1;
@@ -367,7 +376,6 @@ namespace Proyecto1.Services
                 game.WinnerPlayerId = winner.Id;
                 game.FinishedAt = DateTime.UtcNow;
 
-                // 💰 También dar monedas si se gana porque todos se rindieron
                 if (winner.User != null)
                 {
                     winner.User.GamesPlayed += 1;
